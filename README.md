@@ -1,4 +1,4 @@
-# win_coreutils
+# win_utils
 
 在 Windows 上用 C++ 实现的一组 coreutils 命令行工具。每个命令是独立的 `.exe`，放进 `PATH` 后即可当 `ls`、`cat`、`grep` 等使用。PowerShell 脚本负责编码、提示符，以及去掉会挡住这些命令的别名。
 

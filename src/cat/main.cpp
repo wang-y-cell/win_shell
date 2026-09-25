@@ -8,6 +8,10 @@
 
 namespace {
 
+bool is_blank(const std::string& line) {
+    return line.find_first_not_of(" \t\r") == std::string::npos;
+}
+
 void emit(const std::string& line, bool number_all, bool number_nonblank, int& all_no,
           int& nb_no) {
     if (number_nonblank) {
@@ -38,6 +42,7 @@ int main(int argc, char* argv[]) {
     utils::Parser parser("cat", "Concatenate files and print on the standard output");
     parser.flag("n", "number", "number all output lines")
         .flag("b", "number-nonblank", "number nonempty output lines")
+        .flag("s", "squeeze-blank", "suppress repeated empty output lines")
         .flag("", "help", "show this help")
         .positional("FILE", "file to print, or - for stdin", true);
 
@@ -54,13 +59,20 @@ int main(int argc, char* argv[]) {
 
     const bool number_nonblank = parsed.has("number-nonblank");
     const bool number_all = parsed.has("number") && !number_nonblank;
+    const bool squeeze = parsed.has("squeeze-blank");
     auto files = utils::fsutil::expand_globs(parsed.positionals);
     int all_no = 0;
     int nb_no = 0;
     bool had_error = false;
+    bool prev_blank = false;
 
     auto dump_lines = [&](const std::vector<std::string>& lines) {
         for (const auto& line : lines) {
+            const bool blank = is_blank(line);
+            if (squeeze && blank && prev_blank) {
+                continue;
+            }
+            prev_blank = blank;
             emit(line, number_all, number_nonblank, all_no, nb_no);
         }
     };

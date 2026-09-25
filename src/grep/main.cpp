@@ -4,8 +4,10 @@
 #include "utils/theme.h"
 
 #include <cctype>
+#include <filesystem>
 #include <regex>
 #include <sstream>
+#include <system_error>
 
 namespace {
 
@@ -19,7 +21,13 @@ struct Options {
     bool files_with = false;
     bool only_matching = false;
     bool with_filename = false;
+    bool quiet = false;
+    bool silent = false;
+    bool whole_line = false;
+    bool extended = false;
+    bool recursive = false;
     std::string pattern_file;
+    std::vector<std::string> extra_patterns;
 };
 
 std::string regex_escape(const std::string& text) {
@@ -97,14 +105,35 @@ int main(int argc, char* argv[]) {
         const auto& tok = args[i];
         if (tok == "--help") {
             utils::output::writeln("Usage: grep [OPTION]... PATTERN [FILE]...");
+            utils::output::writeln("  -i  ignore case");
+            utils::output::writeln("  -v  invert match");
+            utils::output::writeln("  -n  line numbers");
+            utils::output::writeln("  -F  fixed strings");
+            utils::output::writeln("  -E  extended regular expressions");
+            utils::output::writeln("  -e  PATTERN");
+            utils::output::writeln("  -f  FILE of patterns");
+            utils::output::writeln("  -c  count matches");
+            utils::output::writeln("  -w  word match");
+            utils::output::writeln("  -x  whole line");
+            utils::output::writeln("  -l  files with matches");
+            utils::output::writeln("  -o  only matching");
+            utils::output::writeln("  -H  print filename");
+            utils::output::writeln("  -q  quiet, only exit status");
+            utils::output::writeln("  -s  suppress error messages");
+            utils::output::writeln("  -r  recursive");
             return 0;
         }
-        if (tok == "-f") {
+        if (tok == "-f" || tok == "-e") {
             if (i + 1 >= args.size()) {
-                utils::output::writeln_err("grep: option requires an argument -- f");
+                utils::output::writeln_err(std::string("grep: option requires an argument -- ") +
+                                           tok.back());
                 return 2;
             }
-            opt.pattern_file = args[++i];
+            if (tok == "-f") {
+                opt.pattern_file = args[++i];
+            } else {
+                opt.extra_patterns.push_back(args[++i]);
+            }
             continue;
         }
         if (tok.size() >= 2 && tok[0] == '-' && tok[1] != '-') {
@@ -122,11 +151,17 @@ int main(int argc, char* argv[]) {
                     case 'F':
                         opt.fixed = true;
                         break;
+                    case 'E':
+                        opt.extended = true;
+                        break;
                     case 'c':
                         opt.count_only = true;
                         break;
                     case 'w':
                         opt.word = true;
+                        break;
+                    case 'x':
+                        opt.whole_line = true;
                         break;
                     case 'l':
                         opt.files_with = true;
@@ -137,8 +172,20 @@ int main(int argc, char* argv[]) {
                     case 'H':
                         opt.with_filename = true;
                         break;
+                    case 'q':
+                        opt.quiet = true;
+                        break;
+                    case 's':
+                        opt.silent = true;
+                        break;
+                    case 'r':
+                    case 'R':
+                        opt.recursive = true;
+                        break;
                     case 'f':
-                        utils::output::writeln_err("grep: option requires an argument -- f");
+                    case 'e':
+                        utils::output::writeln_err(std::string("grep: option requires an argument -- ") +
+                                                   tok[k]);
                         return 2;
                     default:
                         utils::output::writeln_err(std::string("grep: invalid option -- '") + tok[k] +
@@ -151,12 +198,14 @@ int main(int argc, char* argv[]) {
         rest.push_back(tok);
     }
 
-    std::vector<std::string> patterns;
+    std::vector<std::string> patterns = opt.extra_patterns;
     if (!opt.pattern_file.empty()) {
         const auto path = utils::sys::path_from_utf8(opt.pattern_file);
         std::string err;
         if (!utils::sys::read_file_lines(path, patterns, err)) {
-            utils::output::writeln_err("grep: " + opt.pattern_file + ": " + err);
+            if (!opt.silent) {
+                utils::output::writeln_err("grep: " + opt.pattern_file + ": " + err);
+            }
             return 2;
         }
     }
@@ -172,8 +221,35 @@ int main(int argc, char* argv[]) {
         files = rest;
     }
     files = utils::fsutil::expand_globs(files);
+    if (opt.recursive) {
+        std::vector<std::string> expanded;
+        for (const auto& file : files) {
+            const auto path = utils::sys::path_from_utf8(file);
+            if (utils::fsutil::is_dir(path)) {
+                std::error_code ec;
+                for (auto it = std::filesystem::recursive_directory_iterator(
+                         path, std::filesystem::directory_options::skip_permission_denied, ec);
+                     it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+                    if (ec) {
+                        ec.clear();
+                        continue;
+                    }
+                    if (it->is_regular_file(ec)) {
+                        expanded.push_back(utils::sys::path_to_utf8(it->path()));
+                    }
+                }
+            } else {
+                expanded.push_back(file);
+            }
+        }
+        files = std::move(expanded);
+        opt.with_filename = true;
+    }
 
     std::string body;
+    if (opt.extended) {
+        opt.fixed = false;
+    }
     if (opt.fixed) {
         for (std::size_t i = 0; i < patterns.size(); ++i) {
             if (i) {
@@ -191,6 +267,9 @@ int main(int argc, char* argv[]) {
     }
     if (opt.word) {
         body = "\\b(?:" + body + ")\\b";
+    }
+    if (opt.whole_line) {
+        body = "^(?:" + body + ")$";
     }
 
     std::regex re;
@@ -212,9 +291,10 @@ int main(int argc, char* argv[]) {
         int matches = 0;
         for (std::size_t i = 0; i < lines.size(); ++i) {
             const auto& line = lines[i];
-            bool matched = opt.fixed && patterns.size() == 1 && !opt.word
+            bool matched = opt.fixed && patterns.size() == 1 && !opt.word && !opt.whole_line
                                ? literal_match(line, patterns[0], opt.ignore_case)
-                               : std::regex_search(line, re);
+                               : (opt.whole_line ? std::regex_match(line, re)
+                                                 : std::regex_search(line, re));
             if (opt.invert) {
                 matched = !matched;
             }
@@ -223,6 +303,9 @@ int main(int argc, char* argv[]) {
             }
             ++matches;
             any_match = true;
+            if (opt.quiet) {
+                continue;
+            }
             if (opt.files_with) {
                 utils::output::writeln(label.empty() ? "(standard input)" : label);
                 return;
@@ -249,7 +332,7 @@ int main(int argc, char* argv[]) {
                 print_match_line(prefix, line, opt.invert ? nullptr : &re, colorize);
             }
         }
-        if (opt.count_only) {
+        if (opt.count_only && !opt.quiet) {
             std::string prefix;
             if (multi && !label.empty()) {
                 prefix = label + ":";
@@ -264,19 +347,25 @@ int main(int argc, char* argv[]) {
         for (const auto& file : files) {
             const auto path = utils::sys::path_from_utf8(file);
             if (!utils::fsutil::exists(path)) {
-                utils::output::writeln_err("grep: " + file + ": No such file or directory");
+                if (!opt.silent) {
+                    utils::output::writeln_err("grep: " + file + ": No such file or directory");
+                }
                 had_error = true;
                 continue;
             }
             if (utils::fsutil::is_dir(path)) {
-                utils::output::writeln_err("grep: " + file + ": Is a directory");
+                if (!opt.silent) {
+                    utils::output::writeln_err("grep: " + file + ": Is a directory");
+                }
                 had_error = true;
                 continue;
             }
             std::vector<std::string> lines;
             std::string err;
             if (!utils::sys::read_file_lines(path, lines, err)) {
-                utils::output::writeln_err("grep: " + file + ": " + err);
+                if (!opt.silent) {
+                    utils::output::writeln_err("grep: " + file + ": " + err);
+                }
                 had_error = true;
                 continue;
             }
@@ -284,6 +373,9 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if (opt.quiet && any_match) {
+        return 0;
+    }
     if (had_error) {
         return 2;
     }

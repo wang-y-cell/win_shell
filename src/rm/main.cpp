@@ -37,6 +37,8 @@ int main(int argc, char* argv[]) {
     parser.flag("r", "recursive", "remove directories and their contents recursively")
         .flag("R", "RECURSIVE", "same as -r")
         .flag("f", "force", "ignore nonexistent files, never prompt")
+        .flag("i", "interactive", "prompt before every removal")
+        .flag("v", "verbose", "explain what is being done")
         .flag("", "help", "show this help")
         .positional("FILE", "file or directory to remove", true);
 
@@ -53,6 +55,8 @@ int main(int argc, char* argv[]) {
 
     const bool recursive = parsed.has("recursive") || parsed.has("RECURSIVE");
     const bool force = parsed.has("force");
+    const bool interactive = parsed.has("interactive") && !force;
+    const bool verbose = parsed.has("verbose");
     auto paths = utils::fsutil::expand_globs(parsed.positionals);
     if (paths.empty()) {
         utils::output::writeln_err("rm: missing operand");
@@ -75,6 +79,9 @@ int main(int argc, char* argv[]) {
             had_error = true;
             continue;
         }
+        if (interactive && !utils::sys::confirm("rm: remove '" + raw + "'? ")) {
+            continue;
+        }
         std::error_code ec;
         if (force) {
             clear_readonly(path);
@@ -87,6 +94,8 @@ int main(int argc, char* argv[]) {
         if (ec && !force) {
             utils::output::writeln_err("rm: cannot remove '" + raw + "': " + ec.message());
             had_error = true;
+        } else if (!ec && verbose) {
+            utils::output::writeln("removed '" + raw + "'");
         }
     }
     return had_error ? 1 : 0;

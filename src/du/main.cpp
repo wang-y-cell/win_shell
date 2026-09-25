@@ -34,15 +34,17 @@ std::uint64_t dir_size(const fs::path& path, std::error_code& ec) {
     return sum;
 }
 
-void emit(std::uint64_t bytes, const std::string& label, bool human, int width) {
-    const std::string size = utils::theme::format_size(bytes, human, false);
+void emit(std::uint64_t bytes, const std::string& label, bool human, bool kilo, int width) {
+    const std::string size =
+        human ? utils::theme::format_size(bytes, true, false)
+              : (kilo ? std::to_string((bytes + 1023) / 1024) : std::to_string(bytes));
     std::ostringstream out;
     out << std::setw(width) << size << "  " << label;
     utils::output::writeln(out.str());
 }
 
-std::uint64_t walk(const fs::path& dir, const std::string& label, bool human, bool all, int width,
-                   bool& had_error) {
+std::uint64_t walk(const fs::path& dir, const std::string& label, bool human, bool kilo, bool all,
+                   int width, int depth, int max_depth, bool& had_error) {
     std::error_code ec;
     std::vector<fs::directory_entry> children;
     for (auto it = fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
@@ -62,15 +64,18 @@ std::uint64_t walk(const fs::path& dir, const std::string& label, bool human, bo
     for (const auto& child : children) {
         const std::string child_label = label + "\\" + utils::fsutil::filename_utf8(child.path());
         if (child.is_directory()) {
-            walk(child.path(), child_label, human, all, width, had_error);
-        } else if (all) {
+            if (max_depth < 0 || depth < max_depth) {
+                walk(child.path(), child_label, human, kilo, all, width, depth + 1, max_depth,
+                     had_error);
+            }
+        } else if (all && (max_depth < 0 || depth < max_depth)) {
             std::error_code fec;
             const auto size = child.is_regular_file() ? child.file_size(fec) : 0;
-            emit(size, child_label, human, width);
+            emit(size, child_label, human, kilo, width);
         }
     }
     const auto bytes = dir_size(dir, ec);
-    emit(bytes, label, human, width);
+    emit(bytes, label, human, kilo, width);
     return bytes;
 }
 
@@ -82,6 +87,9 @@ int main(int argc, char* argv[]) {
     parser.flag("h", "human-readable", "print sizes in human readable format")
         .flag("s", "summarize", "display only a total for each argument")
         .flag("a", "all", "write counts for all files, not just directories")
+        .flag("c", "total", "produce a grand total")
+        .flag("k", "kilobytes", "print sizes in 1024-byte units")
+        .option("d", "max-depth", "N", "print the total for a directory only if it is N or fewer levels")
         .flag("", "help", "show this help")
         .positional("PATH", "file or directory", true);
 
@@ -99,6 +107,19 @@ int main(int argc, char* argv[]) {
     const bool human = parsed.has("human-readable");
     const bool summarize = parsed.has("summarize");
     const bool all = parsed.has("all");
+    const bool total = parsed.has("total");
+    const bool kilo = parsed.has("kilobytes");
+    int max_depth = -1;
+    if (parsed.has("max-depth")) {
+        max_depth = parsed.get_int("max-depth", 0);
+        if (max_depth < 0) {
+            utils::output::writeln_err("du: invalid max depth");
+            return 1;
+        }
+    }
+    if (summarize) {
+        max_depth = 0;
+    }
     auto paths = utils::fsutil::expand_globs(parsed.positionals);
     if (paths.empty()) {
         paths.emplace_back(".");
@@ -106,6 +127,7 @@ int main(int argc, char* argv[]) {
     const int width = human ? 8 : 12;
 
     bool had_error = false;
+    std::uint64_t grand = 0;
     for (const auto& raw : paths) {
         const auto path = utils::sys::path_from_utf8(raw);
         if (!utils::fsutil::exists(path)) {
@@ -121,10 +143,14 @@ int main(int argc, char* argv[]) {
             } else {
                 bytes = std::filesystem::file_size(path, ec);
             }
-            emit(bytes, raw, human, width);
+            emit(bytes, raw, human, kilo, width);
+            grand += bytes;
             continue;
         }
-        walk(path, raw, human, all, width, had_error);
+        grand += walk(path, raw, human, kilo, all, width, 0, max_depth, had_error);
+    }
+    if (total) {
+        emit(grand, "total", human, kilo, width);
     }
     return had_error ? 1 : 0;
 }

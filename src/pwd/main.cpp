@@ -8,7 +8,8 @@
 int main(int argc, char* argv[]) {
     utils::output::init();
     utils::Parser parser("pwd", "Print the current working directory");
-    parser.flag("P", "physical", "print the resolved physical path")
+    parser.flag("L", "logical", "print the logical current directory (default)")
+        .flag("P", "physical", "print the resolved physical path")
         .flag("", "help", "show this help");
 
     const auto args = utils::sys::utf8_argv(argc, argv);

@@ -10,6 +10,8 @@ int main(int argc, char* argv[]) {
     utils::output::init();
     utils::Parser parser("mv", "Move or rename files");
     parser.flag("f", "force", "overwrite destination if it exists")
+        .flag("i", "interactive", "prompt before overwrite")
+        .flag("n", "no-clobber", "do not overwrite an existing file")
         .flag("v", "verbose", "explain what is being done")
         .flag("", "help", "show this help")
         .positional("FILE", "source and destination", true);
@@ -25,7 +27,9 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    const bool force = parsed.has("force");
+    const bool force = parsed.has("force") && !parsed.has("no-clobber");
+    const bool interactive = parsed.has("interactive") && !parsed.has("no-clobber");
+    const bool no_clobber = parsed.has("no-clobber");
     const bool verbose = parsed.has("verbose");
     auto paths = utils::fsutil::expand_globs(parsed.positionals);
     if (paths.size() < 2) {
@@ -56,7 +60,15 @@ int main(int argc, char* argv[]) {
         }
         std::error_code ec;
         if (std::filesystem::exists(target, ec)) {
-            if (!force) {
+            if (no_clobber) {
+                continue;
+            }
+            if (interactive &&
+                !utils::sys::confirm("mv: overwrite '" + utils::sys::path_to_utf8(target) +
+                                     "'? ")) {
+                continue;
+            }
+            if (!force && !interactive) {
                 utils::output::writeln_err("mv: cannot move '" + src_raw + "' to '" + dest_raw +
                                            "': File exists");
                 had_error = true;

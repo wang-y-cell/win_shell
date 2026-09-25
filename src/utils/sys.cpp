@@ -108,6 +108,22 @@ bool stdin_is_tty() {
     return UTILS_ISATTY(UTILS_FILENO(stdin)) != 0;
 }
 
+bool confirm(const std::string& question) {
+    if (!stdin_is_tty()) {
+        return false;
+    }
+    std::cerr << question;
+    std::cerr.flush();
+    std::string ans;
+    if (!std::getline(std::cin, ans)) {
+        return false;
+    }
+    if (!ans.empty() && ans.back() == '\r') {
+        ans.pop_back();
+    }
+    return !ans.empty() && (ans[0] == 'y' || ans[0] == 'Y');
+}
+
 std::vector<std::string> read_stdin_lines() {
     std::vector<std::string> lines;
     std::string line;
@@ -134,6 +150,28 @@ bool read_file_lines(const std::filesystem::path& path, std::vector<std::string>
             line.pop_back();
         }
         lines.push_back(std::move(line));
+    }
+    return true;
+}
+
+bool read_file_bytes(const std::filesystem::path& path, std::string& data, std::string& error) {
+    std::ifstream in;
+    in.open(path, std::ios::binary);
+    if (!in) {
+        error = "cannot open file";
+        return false;
+    }
+    in.seekg(0, std::ios::end);
+    const auto size = in.tellg();
+    if (size < 0) {
+        error = "cannot read file";
+        return false;
+    }
+    data.resize(static_cast<std::size_t>(size));
+    in.seekg(0);
+    if (size > 0 && !in.read(data.data(), size)) {
+        error = "cannot read file";
+        return false;
     }
     return true;
 }

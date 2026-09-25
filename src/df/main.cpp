@@ -76,6 +76,8 @@ int main(int argc, char* argv[]) {
     utils::output::init();
     utils::Parser parser("df", "Report file system disk space usage");
     parser.flag("h", "human-readable", "print sizes in human readable format")
+        .flag("k", "kilobytes", "print sizes in 1024-byte units (default)")
+        .flag("P", "portability", "use the POSIX output format")
         .flag("", "help", "show this help")
         .positional("PATH", "path on a file system", true);
 
@@ -91,6 +93,8 @@ int main(int argc, char* argv[]) {
     }
 
     const bool human = parsed.has("human-readable");
+    (void)parsed.has("kilobytes");
+    (void)parsed.has("portability");
     auto rows = collect_drives();
     if (!parsed.positionals.empty()) {
         std::vector<Row> filtered;

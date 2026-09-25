@@ -6,10 +6,24 @@
 #include <fstream>
 #include <memory>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+BOOL WINAPI tee_ignore_ctrl(DWORD) {
+    return TRUE;
+}
+#endif
+
 int main(int argc, char* argv[]) {
     utils::output::init();
     utils::Parser parser("tee", "Read from stdin and write to files and stdout");
     parser.flag("a", "append", "append to the given files")
+        .flag("i", "ignore-interrupts", "ignore interrupt signals")
         .flag("", "help", "show this help")
         .positional("FILE", "output file", true);
 
@@ -25,6 +39,11 @@ int main(int argc, char* argv[]) {
     }
 
     const bool append = parsed.has("append");
+    if (parsed.has("ignore-interrupts")) {
+#ifdef _WIN32
+        SetConsoleCtrlHandler(tee_ignore_ctrl, TRUE);
+#endif
+    }
     auto files = utils::fsutil::expand_globs(parsed.positionals);
     std::vector<std::unique_ptr<std::ofstream>> writers;
     writers.reserve(files.size());

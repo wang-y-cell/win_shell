@@ -12,6 +12,9 @@ int main(int argc, char* argv[]) {
     parser.flag("r", "recursive", "copy directories recursively")
         .flag("R", "RECURSIVE", "same as -r")
         .flag("f", "force", "overwrite destination if it exists")
+        .flag("i", "interactive", "prompt before overwrite")
+        .flag("n", "no-clobber", "do not overwrite an existing file")
+        .flag("p", "preserve", "preserve timestamps")
         .flag("v", "verbose", "explain what is being done")
         .flag("", "help", "show this help")
         .positional("FILE", "source and destination", true);
@@ -28,7 +31,10 @@ int main(int argc, char* argv[]) {
     }
 
     const bool recursive = parsed.has("recursive") || parsed.has("RECURSIVE");
-    const bool force = parsed.has("force");
+    const bool force = parsed.has("force") && !parsed.has("no-clobber");
+    const bool interactive = parsed.has("interactive") && !parsed.has("no-clobber");
+    const bool no_clobber = parsed.has("no-clobber");
+    const bool preserve = parsed.has("preserve");
     const bool verbose = parsed.has("verbose");
     auto paths = utils::fsutil::expand_globs(parsed.positionals);
     if (paths.size() < 2) {
@@ -64,11 +70,21 @@ int main(int argc, char* argv[]) {
             target = dest / src.filename();
         }
         std::error_code ec;
-        if (std::filesystem::exists(target, ec) && !force) {
-            utils::output::writeln_err("cp: cannot copy '" + src_raw + "' to '" + dest_raw +
-                                       "': File exists");
-            had_error = true;
-            continue;
+        if (std::filesystem::exists(target, ec)) {
+            if (no_clobber) {
+                continue;
+            }
+            if (interactive) {
+                if (!utils::sys::confirm("cp: overwrite '" + utils::sys::path_to_utf8(target) +
+                                         "'? ")) {
+                    continue;
+                }
+            } else if (!force) {
+                utils::output::writeln_err("cp: cannot copy '" + src_raw + "' to '" + dest_raw +
+                                           "': File exists");
+                had_error = true;
+                continue;
+            }
         }
         const auto options = force ? std::filesystem::copy_options::overwrite_existing
                                    : std::filesystem::copy_options::none;
@@ -83,6 +99,12 @@ int main(int argc, char* argv[]) {
                                        ec.message());
             had_error = true;
             continue;
+        }
+        if (preserve) {
+            const auto t = std::filesystem::last_write_time(src, ec);
+            if (!ec) {
+                std::filesystem::last_write_time(target, t, ec);
+            }
         }
         if (verbose) {
             utils::output::writeln("'" + src_raw + "' -> '" + dest_raw + "'");

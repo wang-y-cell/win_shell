@@ -16,7 +16,18 @@ struct Counts {
     std::uint64_t lines = 0;
     std::uint64_t words = 0;
     std::uint64_t bytes = 0;
+    std::uint64_t chars = 0;
 };
+
+std::uint64_t utf8_chars(const std::string& text) {
+    std::uint64_t n = 0;
+    for (unsigned char ch : text) {
+        if ((ch & 0xC0) != 0x80) {
+            ++n;
+        }
+    }
+    return n;
+}
 
 void count_line(const std::string& line, Counts& c, bool add_newline) {
     ++c.lines;
@@ -30,9 +41,11 @@ void count_line(const std::string& line, Counts& c, bool add_newline) {
         }
     }
     c.bytes += line.size() + (add_newline ? 1 : 0);
+    c.chars += utf8_chars(line) + (add_newline ? 1 : 0);
 }
 
-void print_counts(const Counts& c, bool show_l, bool show_w, bool show_c, const std::string& label) {
+void print_counts(const Counts& c, bool show_l, bool show_w, bool show_c, bool show_m,
+                  const std::string& label) {
     std::ostringstream out;
     bool first = true;
     auto field = [&](std::uint64_t value) {
@@ -51,6 +64,9 @@ void print_counts(const Counts& c, bool show_l, bool show_w, bool show_c, const 
     if (show_c) {
         field(c.bytes);
     }
+    if (show_m) {
+        field(c.chars);
+    }
     if (!label.empty()) {
         out << ' ' << label;
     }
@@ -65,6 +81,7 @@ int main(int argc, char* argv[]) {
     parser.flag("l", "lines", "print the newline counts")
         .flag("w", "words", "print the word counts")
         .flag("c", "bytes", "print the byte counts")
+        .flag("m", "chars", "print the character counts")
         .flag("", "help", "show this help")
         .positional("FILE", "file to count", true);
 
@@ -82,7 +99,8 @@ int main(int argc, char* argv[]) {
     bool show_l = parsed.has("lines");
     bool show_w = parsed.has("words");
     bool show_c = parsed.has("bytes");
-    if (!show_l && !show_w && !show_c) {
+    bool show_m = parsed.has("chars");
+    if (!show_l && !show_w && !show_c && !show_m) {
         show_l = show_w = show_c = true;
     }
 
@@ -92,7 +110,7 @@ int main(int argc, char* argv[]) {
         for (const auto& line : utils::sys::read_stdin_lines()) {
             count_line(line, c, true);
         }
-        print_counts(c, show_l, show_w, show_c, "");
+        print_counts(c, show_l, show_w, show_c, show_m, "");
         return 0;
     }
 
@@ -132,6 +150,7 @@ int main(int argc, char* argv[]) {
                     ++c.words;
                 }
             }
+            c.chars += utf8_chars(line) + 1;
         }
         if (ec) {
             c.bytes = 0;
@@ -139,14 +158,15 @@ int main(int argc, char* argv[]) {
                 c.bytes += line.size() + 1;
             }
         }
-        print_counts(c, show_l, show_w, show_c, file);
+        print_counts(c, show_l, show_w, show_c, show_m, file);
         total.lines += c.lines;
         total.words += c.words;
         total.bytes += c.bytes;
+        total.chars += c.chars;
         ++ok;
     }
     if (ok > 1) {
-        print_counts(total, show_l, show_w, show_c, "total");
+        print_counts(total, show_l, show_w, show_c, show_m, "total");
     }
     return had_error ? 1 : 0;
 }

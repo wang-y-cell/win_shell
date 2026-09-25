@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <system_error>
+#include <vector>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -155,6 +156,9 @@ std::int64_t filetime_age_seconds(const FILETIME& ft) {
 struct Filters {
     std::string name;
     std::string iname;
+    std::string path;
+    std::string newer;
+    std::vector<std::string> exec;
     char type = 0;
     bool has_mtime = false;
     bool has_mmin = false;
@@ -177,6 +181,12 @@ bool match_entry(const fs::path& path, const Filters& f) {
     }
     if (!f.iname.empty() && !match_glob(name, f.iname, true)) {
         return false;
+    }
+    if (!f.path.empty()) {
+        const std::string full = utils::sys::path_to_utf8(path);
+        if (!match_glob(full, f.path, false) && !match_glob(name, f.path, false)) {
+            return false;
+        }
     }
 
     std::error_code ec;
@@ -226,6 +236,21 @@ bool match_entry(const fs::path& path, const Filters& f) {
                 return false;
             }
         }
+        if (!f.newer.empty()) {
+            WIN32_FILE_ATTRIBUTE_DATA ref{};
+            const auto ref_path = utils::sys::path_from_utf8(f.newer);
+            if (!GetFileAttributesExW(ref_path.c_str(), GetFileExInfoStandard, &ref)) {
+                return false;
+            }
+            ULARGE_INTEGER self{}, other{};
+            self.LowPart = data.ftLastWriteTime.dwLowDateTime;
+            self.HighPart = data.ftLastWriteTime.dwHighDateTime;
+            other.LowPart = ref.ftLastWriteTime.dwLowDateTime;
+            other.HighPart = ref.ftLastWriteTime.dwHighDateTime;
+            if (self.QuadPart <= other.QuadPart) {
+                return false;
+            }
+        }
         if (f.has_size) {
             if (is_dir) {
                 return false;
@@ -244,12 +269,60 @@ bool match_entry(const fs::path& path, const Filters& f) {
     return true;
 }
 
+#ifdef _WIN32
+std::wstring quote_win(const std::wstring& text) {
+    std::wstring out = L"\"";
+    for (wchar_t c : text) {
+        if (c == L'"') {
+            out += L'\\';
+        }
+        out += c;
+    }
+    out += L'"';
+    return out;
+}
+
+bool run_exec(const std::vector<std::string>& tmpl, const std::string& path) {
+    std::wstring cmd;
+    for (std::size_t i = 0; i < tmpl.size(); ++i) {
+        std::string arg = tmpl[i];
+        const auto pos = arg.find("{}");
+        if (pos != std::string::npos) {
+            arg.replace(pos, 2, path);
+        }
+        if (i) {
+            cmd += L' ';
+        }
+        cmd += quote_win(utils::sys::utf8_to_wide(arg));
+    }
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    std::vector<wchar_t> buf(cmd.begin(), cmd.end());
+    buf.push_back(L'\0');
+    if (!CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si,
+                        &pi)) {
+        return false;
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return true;
+}
+#endif
+
 void walk(const fs::path& root, const std::string& display, const Filters& f, int depth) {
     if (f.has_maxdepth && depth > f.maxdepth) {
         return;
     }
     if (match_entry(root, f)) {
-        utils::output::writeln(display);
+        if (!f.exec.empty()) {
+#ifdef _WIN32
+            run_exec(f.exec, display);
+#endif
+        } else {
+            utils::output::writeln(display);
+        }
     }
     if (f.has_maxdepth && depth >= f.maxdepth) {
         return;
@@ -349,6 +422,35 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             f.has_size = true;
+        } else if (tok == "-path") {
+            const auto* v = need("-path");
+            if (!v) {
+                utils::output::writeln_err(error);
+                return 1;
+            }
+            f.path = *v;
+        } else if (tok == "-newer") {
+            const auto* v = need("-newer");
+            if (!v) {
+                utils::output::writeln_err(error);
+                return 1;
+            }
+            f.newer = *v;
+        } else if (tok == "-exec") {
+            f.exec.clear();
+            bool closed = false;
+            while (i + 1 < args.size()) {
+                const auto& next = args[++i];
+                if (next == ";") {
+                    closed = true;
+                    break;
+                }
+                f.exec.push_back(next);
+            }
+            if (!closed || f.exec.empty()) {
+                utils::output::writeln_err("find: missing argument to `-exec'");
+                return 1;
+            }
         } else if (tok == "-maxdepth") {
             const auto* v = need("-maxdepth");
             if (!v) {

@@ -43,6 +43,13 @@ std::string to_lower(std::string text) {
 }
 
 #ifdef _WIN32
+/*
+在 Windows 控制台上打开 VT（Virtual Terminal）处理，让控制台能识别 ANSI 转义序列，从而正常显示颜色、样式
+Linux / macOS 终端默认就支持 ANSI，例如 \033[31m 变红、\033[0m 复位。
+Windows 控制台默认不解释这些序列，直接当普通字符打印出来。Windows 10 起可以给控制台加上 ENABLE_VIRTUAL_TERMINAL_PROCESSING，行为才和 Unix 终端对齐。
+
+这个文件后面的彩色输出（color::paint、maybe_paint）就是靠这类转义序列工作的，所以初始化时必须先打开 VT。
+*/
 void enable_vt(DWORD handle_id) {
     HANDLE handle = GetStdHandle(handle_id);
     if (handle == nullptr || handle == INVALID_HANDLE_VALUE) {
@@ -74,8 +81,8 @@ void init() {
 #ifdef _WIN32
     enable_vt(STD_OUTPUT_HANDLE);
     enable_vt(STD_ERROR_HANDLE);
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8); //设置控制台输出代码点为UTF-8
+    SetConsoleCP(CP_UTF8); //设置控制台输入代码点为UTF-8
 #endif
     g_inited = true;
 }

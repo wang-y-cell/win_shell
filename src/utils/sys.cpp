@@ -24,6 +24,7 @@
 namespace utils {
 namespace sys {
 
+//将宽字符串转换为UTF-8字符串
 std::string wide_to_utf8(const wchar_t* text, int length) {
 #ifdef _WIN32
     if (text == nullptr || length == 0 || (length < 0 && text[0] == L'\0')) {
@@ -46,6 +47,7 @@ std::string wide_to_utf8(const wchar_t* text, int length) {
 #endif
 }
 
+//将UTF-8字符串转换为宽字符串
 std::wstring utf8_to_wide(const std::string& text) {
 #ifdef _WIN32
     if (text.empty()) {
@@ -65,6 +67,7 @@ std::wstring utf8_to_wide(const std::string& text) {
 #endif
 }
 
+//将文件路径转换为UTF-8字符串
 std::string path_to_utf8(const std::filesystem::path& path) {
 #ifdef _WIN32
     const auto& w = path.native();
@@ -74,6 +77,7 @@ std::string path_to_utf8(const std::filesystem::path& path) {
 #endif
 }
 
+//获得UTF-8字符串的文件路径
 std::filesystem::path path_from_utf8(const std::string& text) {
 #ifdef _WIN32
     return std::filesystem::path(utf8_to_wide(text));
@@ -82,6 +86,7 @@ std::filesystem::path path_from_utf8(const std::string& text) {
 #endif
 }
 
+//将命令行参数从UTF-8转换为宽字符串并返回
 std::vector<std::string> utf8_argv(int argc, char* argv[]) {
 #ifdef _WIN32
     int count = 0;

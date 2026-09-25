@@ -38,6 +38,7 @@ public:
                        bool repeatable = false);
 
     ParseResult parse(int argc, char* argv[]) const;
+    //解析命令行参数
     ParseResult parse(const std::vector<std::string>& argv) const;
 
     std::string help() const;

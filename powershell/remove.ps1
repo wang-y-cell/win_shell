@@ -18,55 +18,82 @@ $ErrorActionPreference = 'Stop'
 $markerBegin = '# >>> win_shell BEGIN'
 $markerEnd   = '# <<< win_shell END'
 
+function Remove-WinShellDir {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $true
+    }
+
+    $last = $null
+    foreach ($delay in @(0, 200, 400, 800, 1600)) {
+        if ($delay) {
+            Start-Sleep -Milliseconds $delay
+        }
+        try {
+            Get-ChildItem -LiteralPath $Path -Force -Recurse -ErrorAction SilentlyContinue |
+                Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            Write-Host "removed $Path"
+            return $true
+        } catch {
+            $last = $_
+        }
+    }
+
+    Write-Warning "could not delete $Path : $($last.Exception.Message)"
+    Write-Warning 'folder is in use (another terminal, or OneDrive sync). close them and run remove.ps1 again, or delete the folder by hand.'
+    return $false
+}
+
 if (-not $PROFILE) {
     throw '$PROFILE is not defined, cannot remove.'
 }
 
 Write-Host "profile: $PROFILE"
 
-if (-not (Test-Path -LiteralPath $PROFILE)) {
-    Write-Host '$PROFILE does not exist; nothing to remove.'
-    return
-}
+$profileDir = Split-Path -Parent $PROFILE
+$installDir = Join-Path $profileDir 'win_shell'
 
-$out = [System.Collections.Generic.List[string]]::new()
-$skip = $false
-$removed = $false
-foreach ($line in @(Get-Content -LiteralPath $PROFILE -ErrorAction SilentlyContinue)) {
-    if ($line -eq $markerBegin) {
-        $skip = $true
-        $removed = $true
-        continue
-    }
-    if ($skip) {
-        if ($line -eq $markerEnd) {
-            $skip = $false
+if (Test-Path -LiteralPath $PROFILE) {
+    $out = [System.Collections.Generic.List[string]]::new()
+    $skip = $false
+    $removed = $false
+    foreach ($line in @(Get-Content -LiteralPath $PROFILE -ErrorAction SilentlyContinue)) {
+        if ($line -eq $markerBegin) {
+            $skip = $true
+            $removed = $true
+            continue
         }
-        continue
+        if ($skip) {
+            if ($line -eq $markerEnd) {
+                $skip = $false
+            }
+            continue
+        }
+        $out.Add($line)
     }
-    $out.Add($line)
+
+    if ($skip) {
+        throw "win_shell block in `$PROFILE is missing '$markerEnd'"
+    }
+
+    if ($removed) {
+        while ($out.Count -gt 0 -and $out[$out.Count - 1] -eq '') {
+            $out.RemoveAt($out.Count - 1)
+        }
+        Set-Content -LiteralPath $PROFILE -Value ($out -join [Environment]::NewLine) -Encoding UTF8
+        Write-Host 'removed win_shell block from $PROFILE'
+    } else {
+        Write-Host 'no win_shell block found in $PROFILE'
+    }
+} else {
+    Write-Host '$PROFILE does not exist'
 }
 
-if ($skip) {
-    throw "win_shell block in `$PROFILE is missing '$markerEnd'"
+$dirOk = Remove-WinShellDir $installDir
+if ($dirOk) {
+    Write-Host 'current session is unchanged; new terminals will not load win_shell.'
+} else {
+    Write-Host 'profile hook is gone, but the copied folder is still there.'
+    exit 1
 }
-
-if (-not $removed) {
-    Write-Host 'no win_shell block found in $PROFILE'
-    return
-}
-
-while ($out.Count -gt 0 -and $out[$out.Count - 1] -eq '') {
-    $out.RemoveAt($out.Count - 1)
-}
-
-Set-Content -LiteralPath $PROFILE -Value ($out -join [Environment]::NewLine) -Encoding UTF8
-Write-Host 'removed win_shell block from $PROFILE'
-
-$installDir = Join-Path (Split-Path -Parent $PROFILE) 'win_shell'
-if (Test-Path -LiteralPath $installDir) {
-    Remove-Item -LiteralPath $installDir -Recurse -Force
-    Write-Host "removed $installDir"
-}
-
-Write-Host 'current session is unchanged; new terminals will not load win_shell.'

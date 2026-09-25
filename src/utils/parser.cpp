@@ -143,6 +143,9 @@ ParseResult Parser::parse(const std::vector<std::string>& argv) const {
             continue;
         }
 
+        //解析短参数,注意这里可以解析多个短参数,例如"-abc"会被解析为"-a -b -c"
+        //但是如果参数需要值,请将需要值得参数放在最后,例如"-ab value",其中b参数需要值
+        //如果没有放在最后,后面得参数就会被忽略
         const std::string cluster = token.substr(1);
         for (std::size_t k = 0; k < cluster.size(); ++k) {
             const char c = cluster[k];
@@ -285,6 +288,7 @@ void Parser::validate_names(const std::string& short_name,
 void Parser::store(ParseResult& result,
                    const OptionSpec& spec,
                    const std::string& value) {
+    //即使我的参数只是一个短参数或者一个长参数,我也会将他们另一个作为key存入values中
     if (!spec.long_name.empty()) {
         result.values[spec.long_name] = value;
     }

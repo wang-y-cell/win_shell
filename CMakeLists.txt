@@ -38,7 +38,12 @@ endfunction()
 set(WIN_SHELL_CMDS
     pwd ls cat head tail wc tee sort uniq
     basename dirname mkdir touch rm cp mv ln
-    clear which tree du df diff find grep
+    clear which tree du df diff find grep man
+    echo printf date sleep seq yes true false timeout
+    cut tr xargs sed awk paste join comm nl tac rev split cmp
+    realpath readlink stat file rmdir mktemp
+    md5sum sha256sum cksum
+    tar gzip zip unzip
 )
 
 foreach(cmd IN LISTS WIN_SHELL_CMDS)
@@ -49,4 +54,13 @@ add_executable(ll src/ls/main.cpp)
 target_link_libraries(ll PRIVATE utils)
 target_compile_definitions(ll PRIVATE LS_AS_LL)
 
-install(TARGETS ${WIN_SHELL_CMDS} ll RUNTIME DESTINATION bin)
+add_executable(gunzip src/gzip/main.cpp)
+target_link_libraries(gunzip PRIVATE utils)
+target_compile_definitions(gunzip PRIVATE GZIP_AS_GUNZIP)
+
+# CMake reserves the target name "install".
+add_executable(win_shell_install src/install/main.cpp)
+target_link_libraries(win_shell_install PRIVATE utils)
+set_target_properties(win_shell_install PROPERTIES OUTPUT_NAME install)
+
+install(TARGETS ${WIN_SHELL_CMDS} ll gunzip win_shell_install RUNTIME DESTINATION bin)

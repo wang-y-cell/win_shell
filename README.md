@@ -14,7 +14,7 @@
 在仓库根目录：
 
 ```powershell
-cmake -S . -B build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 # 将生成的bin/目录添加到PATH环境变量中
 ```
@@ -43,15 +43,13 @@ windows@PS:F:/.../win_shell$
 
 ## 写入启动配置
 
-`build.ps1` 在 `$PROFILE` 里写入一段标记块，新开的 PowerShell 会自动执行 `load.ps1`，并立刻对当前窗口再 `load` 一次。
+`build.ps1` 把 `load.ps1` 和 `prompt\` **复制**到 `$PROFILE` 同级的 `win_shell\`，再在 `$PROFILE` 里点源这份副本。之后改仓库布局不会弄丢提示符。命令的 `bin` 路径写在副本里的 `bin.path`，仓库挪了需要再跑一次 `build.ps1`。
 
 ```powershell
 .\powershell\build.ps1
 ```
 
-仓库换了位置时再跑一次即可更新 `$PROFILE` 里的路径。
-
-`remove.ps1` 只删掉这段标记，其它配置不动：
+`remove.ps1` 删掉这段标记和同级的 `win_shell\` 目录，其它配置不动：
 
 ```powershell
 .\powershell\remove.ps1
@@ -61,7 +59,7 @@ windows@PS:F:/.../win_shell$
 
 ## PowerShell 会挡住的命令
 
-PowerShell 自带 `ls`、`cat`、`pwd` 等别名，指向 `Get-ChildItem` / `Get-Content`。`load` 会去掉这些别名，否则敲 `ls` 仍是系统那一套。
+PowerShell 自带 `ls`、`cat`、`pwd`、`echo`、`sleep` 等别名。`load` 会去掉这些别名，否则敲 `ls` 仍是系统那一套。
 
 `cd` **不能**做成 `.exe`：子进程里改目录，退回当前 shell 不会变。继续用 PowerShell 的 `cd` / `Set-Location`。
 
@@ -69,11 +67,13 @@ PowerShell 自带 `ls`、`cat`、`pwd` 等别名，指向 `Get-ChildItem` / `Get
 
 | 类别 | 命令 |
 | --- | --- |
-| 列表 / 路径 | `ls` `ll` `pwd` `tree` `which` `basename` `dirname` |
-| 文本 | `cat` `head` `tail` `wc` `tee` `sort` `uniq` `grep` `diff` |
-| 文件 | `mkdir` `touch` `rm` `cp` `mv` `ln` |
-| 磁盘 / 查找 | `du` `df` `find` |
-| 其它 | `clear` |
+| 列表 / 路径 | `ls` `ll` `pwd` `tree` `which` `basename` `dirname` `realpath` `readlink` |
+| 文本 | `cat` `head` `tail` `wc` `tee` `sort` `uniq` `grep` `diff` `cut` `tr` `sed` `awk` `paste` `join` `comm` `nl` `tac` `rev` `split` `cmp` |
+| 文件 | `mkdir` `touch` `rm` `cp` `mv` `ln` `rmdir` `mktemp` `install` `stat` `file` |
+| 磁盘 / 查找 | `du` `df` `find` `xargs` |
+| 小工具 | `echo` `printf` `date` `sleep` `seq` `yes` `true` `false` `timeout` |
+| 校验 / 打包 | `md5sum` `sha256sum` `cksum` `tar` `gzip` `gunzip` `zip` `unzip` |
+| 其它 | `clear` `man` |
 
 `ll` 等同 `ls -alh`。各命令支持 `--help`。
 

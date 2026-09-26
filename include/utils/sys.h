@@ -16,9 +16,9 @@ std::vector<std::string> utf8_argv(int argc, char* argv[]);
 
 bool stdin_is_tty();
 bool confirm(const std::string& question);
-std::vector<std::string> read_stdin_lines();
+std::vector<std::string> read_stdin_lines(bool strip_cr = true);
 bool read_file_lines(const std::filesystem::path& path, std::vector<std::string>& lines,
-                     std::string& error);
+                     std::string& error, bool strip_cr = true);
 bool read_file_bytes(const std::filesystem::path& path, std::string& data, std::string& error);
 
 }  // namespace sys

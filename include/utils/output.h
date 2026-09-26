@@ -25,6 +25,9 @@ bool parse_color_mode(const std::string& text, ColorMode& mode);
 bool is_stdout_tty();
 bool is_stderr_tty();
 
+// Visible columns of the stdout console. Falls back to 80 if unknown.
+int terminal_width();
+
 // Respects ColorMode, TTY, and NO_COLOR. stream "err" uses stderr for Auto.
 bool color_enabled(bool stderr_stream = false);
 

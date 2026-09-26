@@ -671,16 +671,7 @@ int console_width(const LsOptions& opt) {
     if (opt.width < 0) {
         return 65535;
     }
-#ifdef _WIN32
-    CONSOLE_SCREEN_BUFFER_INFO info{};
-    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info)) {
-        const int width = info.srWindow.Right - info.srWindow.Left + 1;
-        if (width > 0) {
-            return width;
-        }
-    }
-#endif
-    return 80;
+    return utils::output::terminal_width();
 }
 
 Layout layout_of(const LsOptions& opt) {

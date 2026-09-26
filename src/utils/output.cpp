@@ -11,6 +11,7 @@
 #define UTILS_ISATTY(fd) _isatty(fd)
 #define UTILS_FILENO(file) _fileno(file)
 #else
+#include <sys/ioctl.h>
 #include <unistd.h>
 #define UTILS_ISATTY(fd) isatty(fd)
 #define UTILS_FILENO(file) fileno(file)
@@ -118,6 +119,24 @@ bool is_stdout_tty() {
 
 bool is_stderr_tty() {
     return is_tty_file(stderr);
+}
+
+int terminal_width() {
+#ifdef _WIN32
+    CONSOLE_SCREEN_BUFFER_INFO info{};
+    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info)) {
+        const int width = info.srWindow.Right - info.srWindow.Left + 1;
+        if (width > 0) {
+            return width;
+        }
+    }
+#else
+    struct winsize size {};
+    if (ioctl(UTILS_FILENO(stdout), TIOCGWINSZ, &size) == 0 && size.ws_col > 0) {
+        return static_cast<int>(size.ws_col);
+    }
+#endif
+    return 80;
 }
 
 bool color_enabled(bool stderr_stream) {

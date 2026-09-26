@@ -129,20 +129,28 @@ bool confirm(const std::string& question) {
     return !ans.empty() && (ans[0] == 'y' || ans[0] == 'Y');
 }
 
-std::vector<std::string> read_stdin_lines() {
+namespace {
+
+void maybe_strip_cr(std::string& line, bool strip_cr) {
+    if (strip_cr && !line.empty() && line.back() == '\r') {
+        line.pop_back();
+    }
+}
+
+}  // namespace
+
+std::vector<std::string> read_stdin_lines(bool strip_cr) {
     std::vector<std::string> lines;
     std::string line;
     while (std::getline(std::cin, line)) {
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
+        maybe_strip_cr(line, strip_cr);
         lines.push_back(std::move(line));
     }
     return lines;
 }
 
 bool read_file_lines(const std::filesystem::path& path, std::vector<std::string>& lines,
-                     std::string& error) {
+                     std::string& error, bool strip_cr) {
     std::ifstream in;
     in.open(path, std::ios::binary);
     if (!in) {
@@ -151,9 +159,7 @@ bool read_file_lines(const std::filesystem::path& path, std::vector<std::string>
     }
     std::string line;
     while (std::getline(in, line)) {
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
+        maybe_strip_cr(line, strip_cr);
         lines.push_back(std::move(line));
     }
     return true;

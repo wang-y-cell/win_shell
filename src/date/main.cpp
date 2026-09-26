@@ -3,6 +3,7 @@
 #include "utils/sys.h"
 
 #include <ctime>
+#include <cwchar>
 #include <string>
 
 #ifdef _WIN32
@@ -18,11 +19,20 @@
 namespace {
 
 std::string format_time(const std::tm& t, const std::string& fmt) {
+#ifdef _WIN32
+    const std::wstring wfmt = utils::sys::utf8_to_wide(fmt);
+    wchar_t buf[512];
+    if (std::wcsftime(buf, sizeof(buf) / sizeof(buf[0]), wfmt.c_str(), &t) == 0) {
+        return {};
+    }
+    return utils::sys::wide_to_utf8(buf);
+#else
     char buf[512];
     if (std::strftime(buf, sizeof(buf), fmt.c_str(), &t) == 0) {
         return {};
     }
     return buf;
+#endif
 }
 
 }  // namespace

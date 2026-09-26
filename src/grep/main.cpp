@@ -69,13 +69,32 @@ bool literal_match(const std::string& line, const std::string& pat, bool icase) 
     return false;
 }
 
-void print_match_line(const std::string& prefix, const std::string& line, const std::regex* re,
-                      bool colorize) {
+void write_prefix(const std::string& label, bool multi, bool line_number, std::size_t lineno,
+                  bool colorize) {
+    if (multi && !label.empty()) {
+        if (colorize) {
+            utils::output::write(label, utils::theme::purple());
+        } else {
+            utils::output::write(label);
+        }
+        utils::output::write(":");
+    }
+    if (line_number) {
+        const auto num = std::to_string(lineno);
+        if (colorize) {
+            utils::output::write(num, utils::theme::green());
+        } else {
+            utils::output::write(num);
+        }
+        utils::output::write(": ");
+    }
+}
+
+void print_match_line(const std::string& line, const std::regex* re, bool colorize) {
     if (!colorize || re == nullptr) {
-        utils::output::writeln(prefix + line);
+        utils::output::writeln(line);
         return;
     }
-    utils::output::write(prefix);
     std::sregex_iterator it(line.begin(), line.end(), *re);
     std::sregex_iterator end;
     std::size_t last = 0;
@@ -313,23 +332,18 @@ int main(int argc, char* argv[]) {
             if (opt.count_only) {
                 continue;
             }
-            std::string prefix;
-            if (multi && !label.empty()) {
-                prefix += label + ":";
-            }
-            if (opt.line_number) {
-                prefix += std::to_string(i + 1) + ":";
-            }
             if (opt.only_matching && !opt.invert) {
                 for (std::sregex_iterator it(line.begin(), line.end(), re), end; it != end; ++it) {
+                    write_prefix(label, multi, opt.line_number, i + 1, colorize);
                     if (colorize) {
-                        utils::output::writeln(prefix + it->str(), utils::theme::red());
+                        utils::output::writeln(it->str(), utils::theme::red());
                     } else {
-                        utils::output::writeln(prefix + it->str());
+                        utils::output::writeln(it->str());
                     }
                 }
             } else {
-                print_match_line(prefix, line, opt.invert ? nullptr : &re, colorize);
+                write_prefix(label, multi, opt.line_number, i + 1, colorize);
+                print_match_line(line, opt.invert ? nullptr : &re, colorize);
             }
         }
         if (opt.count_only && !opt.quiet) {
